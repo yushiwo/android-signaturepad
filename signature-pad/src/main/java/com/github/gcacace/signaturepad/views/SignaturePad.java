@@ -27,6 +27,7 @@ import java.util.List;
 
 public class SignaturePad extends View {
     //View state
+    /** 记录一个笔画中，相应绘制点的信息 */
     private List<TimedPoint> mPoints;
     private boolean mIsEmpty;
     private float mLastTouchX;
@@ -38,7 +39,9 @@ public class SignaturePad extends View {
     private final SvgBuilder mSvgBuilder = new SvgBuilder();
 
     // Cache
+    /** 用于暂存点的 */
     private List<TimedPoint> mPointsCache = new ArrayList<>();
+    /** 曲线控制点 */
     private ControlTimedPoints mControlTimedPointsCached = new ControlTimedPoints();
     private Bezier mBezierCached = new Bezier();
 
@@ -87,8 +90,8 @@ public class SignaturePad extends View {
         //Fixed parameters
         mPaint.setAntiAlias(true);
         mPaint.setStyle(Paint.Style.STROKE);
-        mPaint.setStrokeCap(Paint.Cap.ROUND);
-        mPaint.setStrokeJoin(Paint.Join.ROUND);
+        mPaint.setStrokeCap(Paint.Cap.ROUND);  //设置笔触风格
+        mPaint.setStrokeJoin(Paint.Join.ROUND); //设置连接处风格
 
         //Dirty rectangle to update only the changed portion of the view
         mDirtyRect = new RectF();
@@ -97,6 +100,7 @@ public class SignaturePad extends View {
     }
 
     /**
+     * 设置画笔的颜色 <br/>
      * Set the pen color from a given resource.
      * If the resource is not found, {@link android.graphics.Color#BLACK} is assumed.
      *
@@ -111,6 +115,7 @@ public class SignaturePad extends View {
     }
 
     /**
+     * 设置画笔的颜色<br/>
      * Set the pen color from a given color.
      *
      * @param color the color.
@@ -120,6 +125,7 @@ public class SignaturePad extends View {
     }
 
     /**
+     * 设置画笔的最小宽度<br/>
      * Set the minimum width of the stroke in pixel.
      *
      * @param minWidth the width in dp.
@@ -129,6 +135,7 @@ public class SignaturePad extends View {
     }
 
     /**
+     * 设置画笔的最大宽度<br/>
      * Set the maximum width of the stroke in pixel.
      *
      * @param maxWidth the width in dp.
@@ -146,6 +153,9 @@ public class SignaturePad extends View {
         mVelocityFilterWeight = velocityFilterWeight;
     }
 
+    /**
+     * 清除绘制的笔迹
+     */
     public void clear() {
         mSvgBuilder.clear();
         mPoints = new ArrayList<>();
@@ -399,6 +409,10 @@ public class SignaturePad extends View {
         return timedPoint.set(x, y);
     }
 
+    /**
+     * 将点暂时存储起来
+     * @param point
+     */
     private void recyclePoint(TimedPoint point) {
         mPointsCache.add(point);
     }
@@ -425,11 +439,13 @@ public class SignaturePad extends View {
             float velocity = endPoint.velocityFrom(startPoint);
             velocity = Float.isNaN(velocity) ? 0.0f : velocity;
 
+            // 通过速度过滤比重值重新计算曲线绘制的速度(上次速度和这次速度按照比重取值相加得到)
             velocity = mVelocityFilterWeight * velocity
                     + (1 - mVelocityFilterWeight) * mLastVelocity;
 
             // The new width is a function of the velocity. Higher velocities
             // correspond to thinner strokes.
+            // 计算新笔画曲线的粗细，速度越快，笔迹越细
             float newWidth = strokeWidth(velocity);
 
             // The Bezier's width starts out as last curve's final width, and
@@ -438,11 +454,13 @@ public class SignaturePad extends View {
             // start and end mPoints.
             addBezier(curve, mLastWidth, newWidth);
 
+            // 记录上一次的绘制速度和曲线宽度
             mLastVelocity = velocity;
             mLastWidth = newWidth;
 
             // Remove the first element from the list,
             // so that we always have no more than 4 mPoints in mPoints array.
+            // 移除最先记录的point，确保mPoints的列表中的点的个数不超过4个
             recyclePoint(mPoints.remove(0));
 
             recyclePoint(c2);
@@ -451,16 +469,24 @@ public class SignaturePad extends View {
         } else if (pointsCount == 1) {
             // To reduce the initial lag make it work with 3 mPoints
             // by duplicating the first point
+            // 为了减少初始的延时，复制第一个点（即action_down所表示的点）
             TimedPoint firstPoint = mPoints.get(0);
             mPoints.add(getNewPoint(firstPoint.x, firstPoint.y));
         }
     }
 
+    /**
+     * 根据计算的贝赛尔曲线绘制每个点的宽度
+     * @param curve
+     * @param startWidth
+     * @param endWidth
+     */
     private void addBezier(Bezier curve, float startWidth, float endWidth) {
         mSvgBuilder.append(curve, (startWidth + endWidth) / 2);
         ensureSignatureBitmap();
         float originalWidth = mPaint.getStrokeWidth();
         float widthDelta = endWidth - startWidth;
+        // 返回小于或等于曲线长度的整数，表示当前曲线需要绘制多少个点
         float drawSteps = (float) Math.floor(curve.length());
 
         for (int i = 0; i < drawSteps; i++) {
@@ -491,6 +517,13 @@ public class SignaturePad extends View {
         mPaint.setStrokeWidth(originalWidth);
     }
 
+    /**
+     * 计算曲线的控制点
+     * @param s1
+     * @param s2
+     * @param s3
+     * @return
+     */
     private ControlTimedPoints calculateCurveControlPoints(TimedPoint s1, TimedPoint s2, TimedPoint s3) {
         float dx1 = s1.x - s2.x;
         float dy1 = s1.y - s2.y;
@@ -518,11 +551,17 @@ public class SignaturePad extends View {
         return mControlTimedPointsCached.set(getNewPoint(m1X + tx, m1Y + ty), getNewPoint(m2X + tx, m2Y + ty));
     }
 
+    /**
+     * 计算笔画的宽度
+     * @param velocity 过滤速度
+     * @return
+     */
     private float strokeWidth(float velocity) {
         return Math.max(mMaxWidth / (velocity + 1), mMinWidth);
     }
 
     /**
+     * 重新计算要绘制的区域<br/>
      * Called when replaying history to ensure the dirty region includes all
      * mPoints.
      *
@@ -543,6 +582,7 @@ public class SignaturePad extends View {
     }
 
     /**
+     * 重新设置绘制区域<br/>
      * Resets the dirty region when the motion event occurs.
      *
      * @param eventX the event x coordinate.
@@ -568,6 +608,9 @@ public class SignaturePad extends View {
         }
     }
 
+    /**
+     * 将屏幕上当前的绘制内容保存为bitmap放在内存中
+     */
     private void ensureSignatureBitmap() {
         if (mSignatureBitmap == null) {
             mSignatureBitmap = Bitmap.createBitmap(getWidth(), getHeight(),
@@ -576,6 +619,11 @@ public class SignaturePad extends View {
         }
     }
 
+    /**
+     * dp转px
+     * @param dp
+     * @return
+     */
     private int convertDpToPx(float dp){
         return Math.round(getContext().getResources().getDisplayMetrics().density * dp);
     }
