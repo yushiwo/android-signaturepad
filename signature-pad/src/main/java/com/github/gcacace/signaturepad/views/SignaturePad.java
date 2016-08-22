@@ -60,12 +60,12 @@ public class SignaturePad extends View {
 
     //Default attribute values
     /** 笔画最小宽度 */
-    private final int DEFAULT_ATTR_PEN_MIN_WIDTH_PX = 0;
+    private final int DEFAULT_ATTR_PEN_MIN_WIDTH_PX = 1;
     /** 笔画最大宽度 */
     private final int DEFAULT_ATTR_PEN_MAX_WIDTH_PX = 7;
     /** 笔画颜色 */
     private final int DEFAULT_ATTR_PEN_COLOR = Color.BLACK;
-    private final float DEFAULT_ATTR_VELOCITY_FILTER_WEIGHT = 0.2f;
+    private final float DEFAULT_ATTR_VELOCITY_FILTER_WEIGHT = 0.1f;
     private final boolean DEFAULT_ATTR_CLEAR_ON_DOUBLE_CLICK = false;
 
     private Paint mPaint = new Paint();
@@ -442,16 +442,17 @@ public class SignaturePad extends View {
             TimedPoint startPoint = curve.startPoint;
             TimedPoint endPoint = curve.endPoint;
 
+            // 1、获取两点之间的平均速度
             float velocity = endPoint.velocityFrom(startPoint);
             velocity = Float.isNaN(velocity) ? 0.0f : velocity;
 
-            // 通过速度过滤比重值重新计算曲线绘制的速度(上次速度和这次速度按照比重取值相加得到)
+            // 2、通过速度过滤比重值重新计算曲线绘制的速度(上次速度和这次速度按照比重取值相加得到)
             velocity = mVelocityFilterWeight * velocity
                     + (1 - mVelocityFilterWeight) * mLastVelocity;
 
             // The new width is a function of the velocity. Higher velocities
             // correspond to thinner strokes.
-            // 计算新笔画曲线的粗细，速度越快，笔迹越细
+            // 3、计算新笔画曲线的粗细，速度越快，笔迹越细
             float newWidth = strokeWidth(velocity);
 
             // 之前速度为空，表明是新的一笔，采用最大宽度
