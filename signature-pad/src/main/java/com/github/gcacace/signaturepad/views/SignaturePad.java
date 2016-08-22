@@ -10,6 +10,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
@@ -58,10 +59,13 @@ public class SignaturePad extends View {
     private static final int DOUBLE_CLICK_DELAY_MS = 200;
 
     //Default attribute values
-    private final int DEFAULT_ATTR_PEN_MIN_WIDTH_PX = 3;
+    /** 笔画最小宽度 */
+    private final int DEFAULT_ATTR_PEN_MIN_WIDTH_PX = 0;
+    /** 笔画最大宽度 */
     private final int DEFAULT_ATTR_PEN_MAX_WIDTH_PX = 7;
+    /** 笔画颜色 */
     private final int DEFAULT_ATTR_PEN_COLOR = Color.BLACK;
-    private final float DEFAULT_ATTR_VELOCITY_FILTER_WEIGHT = 0.9f;
+    private final float DEFAULT_ATTR_VELOCITY_FILTER_WEIGHT = 0.2f;
     private final boolean DEFAULT_ATTR_CLEAR_ON_DOUBLE_CLICK = false;
 
     private Paint mPaint = new Paint();
@@ -91,7 +95,7 @@ public class SignaturePad extends View {
         mPaint.setAntiAlias(true);
         mPaint.setStyle(Paint.Style.STROKE);
         mPaint.setStrokeCap(Paint.Cap.ROUND);  //设置笔触风格
-        mPaint.setStrokeJoin(Paint.Join.ROUND); //设置连接处风格
+        mPaint.setStrokeJoin(Paint.Join.BEVEL); //设置连接处风格
 
         //Dirty rectangle to update only the changed portion of the view
         mDirtyRect = new RectF();
@@ -184,6 +188,8 @@ public class SignaturePad extends View {
             case MotionEvent.ACTION_DOWN:
                 getParent().requestDisallowInterceptTouchEvent(true);
                 mPoints.clear();
+                mLastVelocity = 0;
+                mLastWidth = 0;
                 if (isDoubleClick()) break;
                 mLastTouchX = eventX;
                 mLastTouchY = eventY;
@@ -448,6 +454,11 @@ public class SignaturePad extends View {
             // 计算新笔画曲线的粗细，速度越快，笔迹越细
             float newWidth = strokeWidth(velocity);
 
+            // 之前速度为空，表明是新的一笔，采用最大宽度
+            if(mLastWidth == 0){
+                newWidth = strokeWidth(mLastVelocity);
+            }
+
             // The Bezier's width starts out as last curve's final width, and
             // gradually changes to the stroke width just calculated. The new
             // width calculation is based on the velocity between the Bezier's
@@ -489,6 +500,7 @@ public class SignaturePad extends View {
         // 返回小于或等于曲线长度的整数，表示当前曲线需要绘制多少个点
         float drawSteps = (float) Math.floor(curve.length());
 
+        // 三阶贝赛尔曲线计算绘制每一个点
         for (int i = 0; i < drawSteps; i++) {
             // Calculate the Bezier (x, y) coordinate for this step.
             float t = ((float) i) / drawSteps;
