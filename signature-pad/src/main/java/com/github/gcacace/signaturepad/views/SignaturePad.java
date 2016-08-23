@@ -4,10 +4,12 @@ import android.content.Context;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -60,9 +62,9 @@ public class SignaturePad extends View {
 
     //Default attribute values
     /** 笔画最小宽度 */
-    private final int DEFAULT_ATTR_PEN_MIN_WIDTH_PX = 1;
+    private final int DEFAULT_ATTR_PEN_MIN_WIDTH_PX = 6;
     /** 笔画最大宽度 */
-    private final int DEFAULT_ATTR_PEN_MAX_WIDTH_PX = 7;
+    private final int DEFAULT_ATTR_PEN_MAX_WIDTH_PX = 18;
     /** 笔画颜色 */
     private final int DEFAULT_ATTR_PEN_COLOR = Color.BLACK;
     private final float DEFAULT_ATTR_VELOCITY_FILTER_WEIGHT = 0.1f;
@@ -71,6 +73,9 @@ public class SignaturePad extends View {
     private Paint mPaint = new Paint();
     private Bitmap mSignatureBitmap = null;
     private Canvas mSignatureBitmapCanvas = null;
+
+    private Bitmap mFountainPenBits;
+    private Rect mFountainPenBitsFrame;
 
     public SignaturePad(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -94,11 +99,17 @@ public class SignaturePad extends View {
         //Fixed parameters
         mPaint.setAntiAlias(true);
         mPaint.setStyle(Paint.Style.STROKE);
-        mPaint.setStrokeCap(Paint.Cap.ROUND);  //设置笔触风格
+        mPaint.setStrokeCap(Paint.Cap.SQUARE);  //设置笔触风格
         mPaint.setStrokeJoin(Paint.Join.BEVEL); //设置连接处风格
 
         //Dirty rectangle to update only the changed portion of the view
         mDirtyRect = new RectF();
+
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inPreferredConfig = Bitmap.Config.ALPHA_8;
+        final Resources res = getContext().getResources();
+        mFountainPenBits = BitmapFactory.decodeResource(res, R.drawable.fountainpen, opts);
+        mFountainPenBitsFrame = new Rect(0, 0, mFountainPenBits.getWidth(), mFountainPenBits.getHeight());
 
         clear();
     }
@@ -457,7 +468,8 @@ public class SignaturePad extends View {
 
             // 之前速度为空，表明是新的一笔，采用最大宽度
             if(mLastWidth == 0){
-                newWidth = strokeWidth(mLastVelocity);
+//                newWidth = strokeWidth(mLastVelocity);
+                newWidth = mMaxWidth - mMinWidth;
             }
 
             // The Bezier's width starts out as last curve's final width, and
@@ -521,14 +533,24 @@ public class SignaturePad extends View {
             y += 3 * u * tt * curve.control2.y;
             y += ttt * curve.endPoint.y;
 
-            // Set the incremental stroke width and draw.
-            mPaint.setStrokeWidth(startWidth + ttt * widthDelta);
-            mSignatureBitmapCanvas.drawPoint(x, y, mPaint);
+//            // Set the incremental stroke width and draw.
+//            mPaint.setStrokeWidth(startWidth + ttt * widthDelta);
+//            mSignatureBitmapCanvas.drawPoint(x, y, mPaint);
+
+            float r = (startWidth + ttt * widthDelta)/2f;
+            tmpRF.set(x-r,y-r,x+r,y+r);
+            if (mFountainPenBits == null || mFountainPenBitsFrame == null) {
+                throw new RuntimeException("Slate.drawStrokePoint: no fountainpen bitmap - frame=" + mFountainPenBitsFrame);
+            }
+            mSignatureBitmapCanvas.drawBitmap(mFountainPenBits, mFountainPenBitsFrame, tmpRF, mPaint);
+
             expandDirtyRect(x, y);
         }
 
         mPaint.setStrokeWidth(originalWidth);
     }
+
+    private final RectF tmpRF = new RectF();
 
     /**
      * 计算曲线的控制点
