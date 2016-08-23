@@ -4,11 +4,13 @@ public class TimedPoint {
     public float x;
     public float y;
     public long timestamp;
+    public float presure; //压力值
 
-    public TimedPoint set(float x, float y) {
+    public TimedPoint set(float x, float y, float presure) {
         this.x = x;
         this.y = y;
         this.timestamp = System.currentTimeMillis();
+        this.presure = presure;
         return this;
     }
 

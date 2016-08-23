@@ -62,13 +62,17 @@ public class SignaturePad extends View {
 
     //Default attribute values
     /** 笔画最小宽度 */
-    private final int DEFAULT_ATTR_PEN_MIN_WIDTH_PX = 6;
+    private final int DEFAULT_ATTR_PEN_MIN_WIDTH_PX = 10;
     /** 笔画最大宽度 */
-    private final int DEFAULT_ATTR_PEN_MAX_WIDTH_PX = 18;
+    private final int DEFAULT_ATTR_PEN_MAX_WIDTH_PX = 30;
     /** 笔画颜色 */
     private final int DEFAULT_ATTR_PEN_COLOR = Color.BLACK;
     private final float DEFAULT_ATTR_VELOCITY_FILTER_WEIGHT = 0.1f;
     private final boolean DEFAULT_ATTR_CLEAR_ON_DOUBLE_CLICK = false;
+
+    private float DEFAULT_ATTR_PRESURE_FILTER_WEIGHT = 0.5f;
+    // 压力指数
+    private float mPressureExponent = 2.0f;
 
     private Paint mPaint = new Paint();
     private Bitmap mSignatureBitmap = null;
@@ -194,6 +198,9 @@ public class SignaturePad extends View {
 
         float eventX = event.getX();
         float eventY = event.getY();
+        float eventPresure = event.getPressure();
+
+        Log.d("zrr", "presure = " + event.getPressure());
 
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
@@ -204,17 +211,17 @@ public class SignaturePad extends View {
                 if (isDoubleClick()) break;
                 mLastTouchX = eventX;
                 mLastTouchY = eventY;
-                addPoint(getNewPoint(eventX, eventY));
+                addPoint(getNewPoint(eventX, eventY, eventPresure));
                 if(mOnSignedListener != null) mOnSignedListener.onStartSigning();
 
             case MotionEvent.ACTION_MOVE:
                 resetDirtyRect(eventX, eventY);
-                addPoint(getNewPoint(eventX, eventY));
+                addPoint(getNewPoint(eventX, eventY, eventPresure));
                 break;
 
             case MotionEvent.ACTION_UP:
                 resetDirtyRect(eventX, eventY);
-                addPoint(getNewPoint(eventX, eventY));
+                addPoint(getNewPoint(eventX, eventY, eventPresure));
                 getParent().requestDisallowInterceptTouchEvent(true);
                 setIsEmpty(false);
                 break;
@@ -412,7 +419,7 @@ public class SignaturePad extends View {
         return false;
     }
 
-    private TimedPoint getNewPoint(float x, float y) {
+    private TimedPoint getNewPoint(float x, float y, float presure) {
         int mCacheSize = mPointsCache.size();
         TimedPoint timedPoint;
         if (mCacheSize == 0) {
@@ -423,7 +430,7 @@ public class SignaturePad extends View {
             timedPoint = mPointsCache.remove(mCacheSize-1);
         }
 
-        return timedPoint.set(x, y);
+        return timedPoint.set(x, y, presure);
     }
 
     /**
@@ -464,11 +471,14 @@ public class SignaturePad extends View {
             // The new width is a function of the velocity. Higher velocities
             // correspond to thinner strokes.
             // 3、计算新笔画曲线的粗细，速度越快，笔迹越细
-            float newWidth = strokeWidth(velocity);
+            float newWidthVelocity = getStrokeWidthWithVelocity(velocity);
+            float newWidthPresure = getStrokeWidthWithPresure(mMinWidth, mMaxWidth, (float) Math.pow(mPoints.get(2).presure, mPressureExponent));
+
+            float newWidth = (1 - DEFAULT_ATTR_PRESURE_FILTER_WEIGHT) * newWidthVelocity +  DEFAULT_ATTR_PRESURE_FILTER_WEIGHT * newWidthPresure;
 
             // 之前速度为空，表明是新的一笔，采用最大宽度
             if(mLastWidth == 0){
-//                newWidth = strokeWidth(mLastVelocity);
+                // TODO: 16/8/23  这里以后可以用压力值计算s
                 newWidth = mMaxWidth - mMinWidth;
             }
 
@@ -495,8 +505,21 @@ public class SignaturePad extends View {
             // by duplicating the first point
             // 为了减少初始的延时，复制第一个点（即action_down所表示的点）
             TimedPoint firstPoint = mPoints.get(0);
-            mPoints.add(getNewPoint(firstPoint.x, firstPoint.y));
+            mPoints.add(getNewPoint(firstPoint.x, firstPoint.y, firstPoint.presure));
         }
+    }
+
+
+
+    /**
+     * 通过压力计算笔画的宽度
+     * @param minWidth 笔画最小宽度
+     * @param maxWidth 笔画最大宽度
+     * @param presure 压力值，0～1
+     * @return
+     */
+    public static float getStrokeWidthWithPresure(float minWidth, float maxWidth, float presure) {
+        return minWidth + presure * (maxWidth - maxWidth);
     }
 
     /**
@@ -552,6 +575,8 @@ public class SignaturePad extends View {
 
     private final RectF tmpRF = new RectF();
 
+
+
     /**
      * 计算曲线的控制点
      * @param s1
@@ -583,7 +608,10 @@ public class SignaturePad extends View {
         float tx = s2.x - cmX;
         float ty = s2.y - cmY;
 
-        return mControlTimedPointsCached.set(getNewPoint(m1X + tx, m1Y + ty), getNewPoint(m2X + tx, m2Y + ty));
+        float presure12 = (s1.presure + s2.presure) / 2.0f;
+        float presure23 = (s2.presure + s3.presure) / 2.0f;
+
+        return mControlTimedPointsCached.set(getNewPoint(m1X + tx, m1Y + ty, presure12), getNewPoint(m2X + tx, m2Y + ty, presure23));
     }
 
     /**
@@ -591,7 +619,7 @@ public class SignaturePad extends View {
      * @param velocity 过滤速度
      * @return
      */
-    private float strokeWidth(float velocity) {
+    private float getStrokeWidthWithVelocity(float velocity) {
         return Math.max(mMaxWidth / (velocity + 1), mMinWidth);
     }
 
